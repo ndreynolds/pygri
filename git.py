@@ -4,6 +4,7 @@ from __future__ import with_statement
 import os
 import subprocess # only used for Repo.cmd()
 import difflib
+import fnmatch
 
 from dulwich.repo import Repo as DulwichRepo
 from dulwich.objects import Blob, Commit, Tree
@@ -29,12 +30,24 @@ class Repo(object):
     Should be considered a work-in-progress.
     """
 
-    def __init__(self, path):
+    def __init__(self, path, gitignore=None):
+        """
+        Constructs a Repo object.
+
+        :param path: path to the repository.
+        :param gitignore: Unix filename patterns to ignore. Can be given
+                          as a list of pattern strings, or a path to a file.
+                          If neither is supplied, it will look for a 
+                          ``.gitignore`` within the repository root directory. 
+                          If you'd prefer nothing is ignored, just supply 
+                          an empty list.
+        """
         self.repo = DulwichRepo(path) # The inner Dulwich Repo object.
         self.root = path
+        self.ignore_patterns = self._gitignore_setup(gitignore) 
 
     @classmethod
-    def init(cls, path, mkdir=False, bare=False):
+    def init(cls, path, mkdir=False, bare=False, gitignore_path=None):
         """
         Initializes a normal or bare repository. This is mostly a
         handoff to Dulwich.
@@ -51,7 +64,7 @@ class Repo(object):
             DulwichRepo.init_bare(path)
         else:
             DulwichRepo.init(path, mkdir)
-        return cls(path)
+        return cls(path, gitignore_path)
 
     def add(self, path=None, all=False, add_new_files=True):
         """
@@ -139,6 +152,9 @@ class Repo(object):
                     not self._file_in_tree(f)]
         else:
             adds = [f for f in adds if self._file_is_modified(f)]
+
+        # filter gitignore patterns
+        adds = self._filter_ignores()
 
         # don't waste time with stage if empty list.
         if adds:
@@ -310,9 +326,10 @@ class Repo(object):
           [<Commit 6336f47615da32d520a8d52223b9817ee50ca728>]
         """
 
-        start_point = self.head().id
         if ref is not None:
             start_point = self._resolve_ref(ref)
+        else:
+            start_point = self.head().id
         return self.repo.revision_history(start_point)[:n]
 
     def diff(self, a, b=None, path=None):
@@ -446,6 +463,7 @@ class Repo(object):
         :param path: file path relative to the repo
         :param ref: optional ref to compare the WT with, default is HEAD.
         :return: status constant
+        :raises KeyError: when the path doesn't exist in either tree.
         """
         full_path = os.path.join(self.root, path)
         in_work_tree = os.path.exists(full_path)
@@ -671,6 +689,40 @@ class Repo(object):
         diff = list(difflib.context_diff(data1.splitlines(), data2.splitlines()))
         return diff.join('\n')
 
+    def _filter_ignores(self, paths):
+        """
+        Match the given paths against our gitignore patterns. Matches
+        are filtered out of the return list.
+
+        :param paths: a list of filepaths
+        """
+        for pat in self.ignore_patterns:
+            paths = filter(lambda x: not fnmatch.fnmatch(x, pat), paths)
+        return paths
+
+    def _gitignore_setup(gi):
+        """Interpret the constructor's gitignore parameter."""
+        # gitignore given as list of patterns.
+        if type(gi) is list and all(lambda x:type(x) is str, gi):
+            return gi
+        # gitignore given as path to file
+        elif type(gi) is str:
+            if os.path.isfile(gi):
+                path = gi
+            else:
+                raise OSError('Given .gitignore path does not exist')
+        # not given, let's look for one:
+        elif gi is None:
+            default = os.path.join(self.root, '.gitignore')
+            if os.path.isfile(default):
+                path = default
+        # not there (or bad list), return default
+        else:
+            return []
+        # we must have a valid path, open it and hand it to the parser.
+        fp = open(path, 'r')
+        return _parse_gitignore(fp)
+
 
 ### Constants
 
@@ -682,23 +734,42 @@ FILE_IS_DELETED   = 3
 
 ### Utilities
 
-def _expand_branch_name(shortname):
+def _expand_branch_name(shorthand):
     """Expand branch name"""
-    return _expand_ref('heads', shortname)
+    return _expand_ref('heads', shorthand)
 
 
-def _expand_tag_name(shortname):
+def _expand_tag_name(shorthand):
     """Expand tag name"""
-    return _expand_ref('tags', shortname)
+    return _expand_ref('tags', shorthand)
 
 
-def _expand_ref(ref_type, shortname):
-    """Expand ref shorthand into full name"""
-    if shortname.startswith('refs/'):
-        return shortname
-    if shortname.startswith('%s/' % ref_type):
-        return 'refs/%s' % shortname
-    return 'refs/%s/%s' % (ref_type, shortname)
+def _expand_ref(ref_type, shorthand):
+    """
+    Expands and normalizes ref shorthand into a full name.
+    For example, inputs:
+
+    ``master``, ``heads/master``, ``refs/heads/master``
+
+    all yield:
+        
+    ``refs/heads/master``
+
+    :param ref_type: the reference type (e.g. 'tags', 'heads')
+    :param shorthand: 
+    """
+    if shorthand.startswith('refs/'):
+        return shorthand
+    if shorthand.startswith('%s/' % ref_type):
+        return 'refs/%s' % shorthand
+    return 'refs/%s/%s' % (ref_type, shorthand)
+
+
+def _parse_gitignore(f):
+    """
+    Given a file object, parse the gitignore into a list. 
+    """
+    return [line.strip() for line in f if not line.startswith('#')]
 
 
 ### Exceptions
