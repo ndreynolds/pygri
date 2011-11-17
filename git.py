@@ -15,9 +15,9 @@ class Repo(object):
     An abstraction layer on top of dulwich.repo.Repo for higher-level
     git repository actions like:
 
-    * adding only modified files
+    * staging only modified files
     * checking out whole trees (or paths within them) from refs
-    * diffs with difflib
+    * diffs with python's difflib module
     * branching and tagging (both displaying and creating)
     * listing commits down from a ref
 
@@ -44,7 +44,10 @@ class Repo(object):
         """
         self.repo = DulwichRepo(path) # The inner Dulwich Repo object.
         self.root = path
+        # Unix filename patterns that will be ignored by certain actions.
         self.ignore_patterns = self._gitignore_setup(gitignore) 
+        # List of commit SHAs that hold a stash
+        self.stashes = []
 
     @classmethod
     def init(cls, path, mkdir=False, bare=False, gitignore_path=None):
@@ -270,7 +273,8 @@ class Repo(object):
         git_dir = os.path.join(self.root, '.git')
         prefix = ['git', '--git-dir', git_dir, '--work-tree', self.root]
         # It would be nice to use check_output() here, but it's 2.7+
-        return subprocess.Popen(prefix + cmd, stdout=subprocess.PIPE).communicate()[0]
+        return subprocess.Popen(prefix + cmd, 
+                                stdout=subprocess.PIPE).communicate()[0]
 
     def commit(self, all=False, **kwargs):
         """
@@ -404,7 +408,8 @@ class Repo(object):
                 if '.git' in dirnames:
                     dirnames.remove('.git')
                 for f in filenames:
-                    fpath = os.path.relpath(os.path.join(directory, f), self.root)
+                    fpath = os.path.relpath(os.path.join(directory, f), 
+                                            self.root)
                     status = self._file_status(fpath)
                     if status == FILE_IS_NEW:
                         changes['new'].append(fpath)
@@ -414,6 +419,23 @@ class Repo(object):
                         changes['deleted'].append(fpath)
 
         return changes['new'], changes['modified'], changes['deleted']
+
+    def stash(self):
+        """
+        Stash the changes in a dirty working tree.
+
+        As in Git, this works by creating a commit object that is a child
+        of the HEAD commit. 
+        """
+        # TODO
+        raise NotImplementedError
+
+    def stash_apply(self, ref):
+        """
+        Apply the stash commit to the working tree.
+        """
+        # TODO
+        raise NotImplementedError
 
     def tag(self, name, ref=None):
         """
@@ -539,24 +561,6 @@ class Repo(object):
         if self._obj_from_tree(tree, path) is not None:
             return True
         return False
-
-    def _apply_to_tree(self, tree, f, path=None):
-        """
-        Walk a tree recursively and apply function, f, to each entry
-
-        :param tree: a dulwich.objects.Tree object
-        :param f: function that will be called with each entry.
-        :param path: if provided, the path relative to the repository
-                     will be included in the function call.
-        """
-        if type(tree) is not Tree:
-            raise NotTreeError
-        for entry in tree.iteritems():
-            f(entry, path) if path else f(entry)
-            obj = self.repo[entry.sha]
-            if type(obj) is Tree:
-                new_path = os.path.join(path, f) if path else None
-                self._apply_to_tree(obj, f, new_path)
 
     def _obj_from_tree(self, tree, path):
         """
