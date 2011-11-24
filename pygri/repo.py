@@ -375,7 +375,8 @@ class Repo(object):
                           file or directory relative to the repo.
         :return: a tuple containing three lists: new, modified, deleted
         """
-        # TODO: also compare the index and HEAD, or the index and WT 
+        # TODO: also compare the index and HEAD, or the index and WT.
+        # TODO: Filter out .gitignore
 
         # use from_path if set, otherwise root.
         if from_path is not None:
