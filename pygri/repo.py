@@ -705,7 +705,7 @@ class Repo(object):
             paths = filter(lambda x: not fnmatch.fnmatch(x, pat), paths)
         return paths
 
-    def _gitignore_setup(gi):
+    def _gitignore_setup(self, gi):
         """Interpret the constructor's gitignore parameter."""
         # gitignore given as list of patterns.
         if type(gi) is list and all(lambda x:type(x) is str, gi):
