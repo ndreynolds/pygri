@@ -3,9 +3,9 @@ import unittest
 import os
 import shutil
 import inspect
+import uuid
 
-from hopper.utils import get_uuid
-from hopper.git import Repo, \
+from pygri.repo import Repo, \
                        NoHeadSet, \
                        NothingToCommit, \
                        FILE_IS_UNCHANGED, \
@@ -35,7 +35,7 @@ class RepoTest(unittest.TestCase):
 
     def setUp(self):
         # a path to create each test case's repo at.
-        self.path = get_uuid()
+        self.path = str(uuid.uuid4())
 
     def tearDown(self):
         # ``rm -r`` self.path afterwards, if exists.
@@ -324,7 +324,7 @@ class RepoTest(unittest.TestCase):
     def _rand_file(self, path):
         """Write a SHA1 to a file."""
         with open(os.path.join(self.path, path), 'w') as fp:
-            fp.write(get_uuid())
+            fp.write(str(uuid.uuid4()))
 
     def _repo_with_commits(self, num_commits=1):
         """

@@ -157,7 +157,7 @@ class Repo(object):
             adds = [f for f in adds if self._file_is_modified(f)]
 
         # filter gitignore patterns
-        adds = self._filter_ignores()
+        adds = self._filter_ignores(self.ignore_patterns)
 
         # don't waste time with stage if empty list.
         if adds:
@@ -713,20 +713,16 @@ class Repo(object):
         # gitignore given as path to file
         elif type(gi) is str:
             if os.path.isfile(gi):
-                path = gi
+                return _parse_gitignore(open(gi, 'r'))
             else:
                 raise OSError('Given .gitignore path does not exist')
         # not given, let's look for one:
         elif gi is None:
             default = os.path.join(self.root, '.gitignore')
             if os.path.isfile(default):
-                path = default
+                return _parse_gitignore(open(default, 'r'))
         # not there (or bad list), return default
-        else:
-            return []
-        # we must have a valid path, open it and hand it to the parser.
-        fp = open(path, 'r')
-        return _parse_gitignore(fp)
+        return []
 
 
 ### Constants
